@@ -10,6 +10,7 @@ class SleekTextField extends StatelessWidget {
   final TextInputType keyboardType;
   final VoidCallback? onToggleVisibility;
   final bool obsecureTextState;
+  final bool enabled;
 
   const SleekTextField({
     super.key,
@@ -22,50 +23,57 @@ class SleekTextField extends StatelessWidget {
     this.keyboardType = TextInputType.text,
     this.onToggleVisibility,
     required this.obsecureTextState,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          obscureText: obscureText,
-          keyboardType: keyboardType,
-          validator: validator,
-          decoration: InputDecoration(
-            hintText: hintText,
-            prefixIcon: Icon(
-              icon,
-              size: 20,
-              color: theme.textTheme.bodyMedium?.color ?? const Color(0xFF7B7B9B),
+    final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
             ),
-            suffixIcon: obscureText && onToggleVisibility != null
-                ? IconButton(
-                    icon: Icon(
-                      obsecureTextState
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      size: 20,
-                      color: theme.textTheme.bodyMedium?.color ?? const Color(0xFF7B7B9B),
-                    ),
-                    onPressed: onToggleVisibility,
-                  )
-                : null,
           ),
-          style: theme.textTheme.bodyLarge,
-        ),
-        const SizedBox(height: 20),
-      ],
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: controller,
+            obscureText: obscureText,
+            keyboardType: keyboardType,
+            validator: validator,
+            enabled: enabled,
+            decoration: InputDecoration(
+              hintText: hintText,
+              prefixIcon: Icon(
+                icon,
+                size: 20,
+                color: colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+              suffixIcon: obscureText && onToggleVisibility != null
+                  ? IconButton(
+                      icon: Icon(
+                        obsecureTextState
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 20,
+                        color: colorScheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                      onPressed: onToggleVisibility,
+                    )
+                  : null,
+            ),
+            style: theme.textTheme.bodyLarge,
+          ),
+        ],
+      ),
     );
   }
 }

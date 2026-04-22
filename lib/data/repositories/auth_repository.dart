@@ -20,6 +20,9 @@ class AuthRepository {
     await _storageService.setAuthToken(authResponse.token);
     await _storageService.setUserEmail(authResponse.email);
 
+    // Validate the token immediately against a protected endpoint
+    await _authService.validateToken();
+
     return authResponse;
   }
 
@@ -35,7 +38,31 @@ class AuthRepository {
     await _storageService.setAuthToken(authResponse.token);
     await _storageService.setUserEmail(authResponse.email);
 
+    // Validate the token immediately against a protected endpoint
+    await _authService.validateToken();
+
     return authResponse;
+  }
+
+  /// Attempts to restore an existing session from storage.
+  /// Validates the stored token against the API.
+  /// Returns true if the session is valid, false otherwise.
+  Future<bool> restoreSession() async {
+    final token = _storageService.getAuthToken();
+    final email = _storageService.getUserEmail();
+
+    if (token == null || token.isEmpty || email == null || email.isEmpty) {
+      return false;
+    }
+
+    try {
+      await _authService.validateToken();
+      return true;
+    } catch (_) {
+      // Token is invalid or expired — clear storage
+      await logout();
+      return false;
+    }
   }
 
   Future<void> logout() async {
@@ -46,4 +73,6 @@ class AuthRepository {
   bool get isAuthenticated => _storageService.getAuthToken() != null;
 
   String? get currentUserEmail => _storageService.getUserEmail();
+
+  String? get currentToken => _storageService.getAuthToken();
 }

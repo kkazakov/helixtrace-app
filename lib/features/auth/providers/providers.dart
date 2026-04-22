@@ -14,7 +14,10 @@ final storageServiceProvider = Provider<StorageService>((ref) {
 final apiServiceProvider = Provider<ApiService>((ref) {
   final storage = ref.watch(storageServiceProvider);
   final customUrl = storage.getApiKey();
-  return ApiService(customBaseUrl: customUrl);
+  return ApiService(
+    storageService: storage,
+    customBaseUrl: customUrl,
+  );
 });
 
 final authServiceProvider = Provider<AuthService>((ref) {

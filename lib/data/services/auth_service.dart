@@ -31,4 +31,12 @@ class AuthService {
     final data = response.data as Map<String, dynamic>;
     return AuthResponse.fromJson(data);
   }
+
+  /// Validates the currently stored token by calling GET /api/points.
+  /// Throws [ApiException] if the token is invalid or expired.
+  Future<void> validateToken() async {
+    // A successful call means the token is valid.
+    // We don't need the response data, just the 200 status.
+    await _apiService.getPoints();
+  }
 }

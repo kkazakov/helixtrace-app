@@ -6,21 +6,22 @@ class MapScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: theme.brightness == Brightness.dark
                 ? [
-                    const Color(0xFF0A0A12),
-                    const Color(0xFF12121F),
+                    const Color(0xFF0B1120),
+                    const Color(0xFF0F172A),
                   ]
                 : [
-                    const Color(0xFFF8F9FA),
-                    const Color(0xFFEEEEF5),
+                    Colors.white,
+                    const Color(0xFFEFF3FF),
                   ],
           ),
         ),
@@ -29,50 +30,45 @@ class MapScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      theme.colorScheme.primary,
-                      const Color(0xFF00D9FF),
+                      colorScheme.primary,
+                      colorScheme.secondary,
                     ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+                      color: colorScheme.primary.withValues(alpha: 0.25),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.map_outlined,
-                  size: 64,
+                  size: 56,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               Text(
                 'Map',
                 style: theme.textTheme.headlineLarge?.copyWith(
-                  background: Paint()
-                    ..shader = LinearGradient(
-                      colors: [
-                        theme.colorScheme.primary,
-                        const Color(0xFF00D9FF),
-                      ],
-                    ).createShader(
-                      const Rect.fromLTWH(0, 0, 100, 60),
-                    ),
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Your network map will appear here',
-                style: theme.textTheme.bodyMedium,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
               ),
             ],
           ),

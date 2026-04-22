@@ -19,6 +19,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _scrollController = ScrollController();
   bool _obscurePassword = true;
   bool _apiUrlSet = false;
 
@@ -33,6 +34,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -63,11 +65,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return AlertDialog(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
           title: const Text(
             'Set API URL',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(fontWeight: FontWeight.w700),
           ),
           content: Form(
             key: formKey,
@@ -117,166 +119,214 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: theme.brightness == Brightness.dark
                 ? [
-                    const Color(0xFF0A0A12),
-                    const Color(0xFF12121F),
-                    const Color(0xFF0A0A12),
+                    const Color(0xFF0B1120),
+                    const Color(0xFF0F172A),
                   ]
                 : [
-                    const Color(0xFFF8F9FA),
-                    const Color(0xFFEEEEF5),
-                    const Color(0xFFF8F9FA),
+                    Colors.white,
+                    const Color(0xFFEFF3FF),
                   ],
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Spacer(flex: 2),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        theme.colorScheme.primary,
-                        const Color(0xFF00D9FF),
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.gps_fixed_outlined,
-                    size: 48,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'HelixTrace',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineLarge?.copyWith(
-                    background: Paint()
-                      ..shader = LinearGradient(
-                        colors: [
-                          theme.colorScheme.primary,
-                          const Color(0xFF00D9FF),
-                        ],
-                      ).createShader(
-                        const Rect.fromLTWH(0, 0, 200, 60),
-                      ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Map the invisible network',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 48),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      SleekTextField(
-                        label: 'Email',
-                        hintText: 'Enter your email',
-                        icon: Icons.email_outlined,
-                        controller: _emailController,
-                        validator: Validators.emailValidator,
-                        obsecureTextState: false,
-                      ),
-                      SleekTextField(
-                        label: 'Password',
-                        hintText: 'Enter your password',
-                        icon: Icons.lock_outline,
-                        controller: _passwordController,
-                        validator: Validators.passwordValidator,
-                        obscureText: _obscurePassword,
-                        onToggleVisibility: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                        obsecureTextState: _obscurePassword,
-                      ),
-                    ],
-                  ),
-                ),
-                SleekButton(
-                  text: 'Login',
-                  onPressed: _apiUrlSet ? _handleLogin : null,
-                  isLoading: authState.isLoading,
-                ),
-                if (!authState.isLoading && authState.error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12.0),
-                    child: Text(
-                      authState.error!,
-                      style: const TextStyle(
-                        color: Color(0xFFE53935),
-                        fontSize: 13,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                SleekButton(
-                  text: 'Set API URL',
-                  onPressed: _showApiUrlDialog,
-                  isOutlined: true,
-                ),
-                if (!_apiUrlSet)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      'Please set the API URL to enable login',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontSize: 12,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                const SizedBox(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 8, right: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      "Don't have an account? ",
-                      style: theme.textTheme.bodyMedium,
+                    IconButton(
+                      onPressed: _showApiUrlDialog,
+                      icon: const Icon(Icons.link_outlined),
+                      tooltip: 'Set API URL',
+                      style: IconButton.styleFrom(
+                        backgroundColor: colorScheme.surfaceContainer,
+                      ),
                     ),
-                    TextButton(
-                      onPressed: () => context.push(AppConstants.routeRegister),
-                      child: const Text('Register'),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      onPressed: () => ref.read(themeProvider.notifier).toggleTheme(),
+                      icon: Icon(
+                        theme.brightness == Brightness.dark
+                            ? Icons.light_mode_outlined
+                            : Icons.dark_mode_outlined,
+                      ),
+                      tooltip: 'Toggle theme',
+                      style: IconButton.styleFrom(
+                        backgroundColor: colorScheme.surfaceContainer,
+                      ),
                     ),
                   ],
                 ),
-                const Spacer(flex: 2),
-              ],
-            ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: EdgeInsets.only(
+                    left: 24.0,
+                    right: 24.0,
+                    bottom: bottomPadding + 24.0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.04),
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                colorScheme.primary,
+                                colorScheme.secondary,
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: colorScheme.primary.withValues(alpha: 0.25),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.gps_fixed_outlined,
+                            size: 44,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        'HelixTrace',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Map the invisible network',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 15,
+                          color: colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SleekTextField(
+                              label: 'Email',
+                              hintText: 'Enter your email',
+                              icon: Icons.email_outlined,
+                              controller: _emailController,
+                              validator: Validators.emailValidator,
+                              obsecureTextState: false,
+                              enabled: _apiUrlSet,
+                            ),
+                            SleekTextField(
+                              label: 'Password',
+                              hintText: 'Enter your password',
+                              icon: Icons.lock_outline,
+                              controller: _passwordController,
+                              validator: Validators.passwordValidator,
+                              obscureText: _obscurePassword,
+                              onToggleVisibility: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                              obsecureTextState: _obscurePassword,
+                              enabled: _apiUrlSet,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SleekButton(
+                        text: 'Login',
+                        onPressed: _apiUrlSet ? _handleLogin : null,
+                        isLoading: authState.isLoading,
+                      ),
+                      if (!_apiUrlSet)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10.0),
+                          child: Text(
+                            'Set the API URL (top-right) to enable login',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.error.withValues(alpha: 0.8),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      if (!authState.isLoading && authState.error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.error.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              authState.error!,
+                              style: TextStyle(
+                                color: colorScheme.error,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      if (_apiUrlSet) ...[
+                        const SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Don't have an account? ",
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => context.push(AppConstants.routeRegister),
+                              child: const Text('Register'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

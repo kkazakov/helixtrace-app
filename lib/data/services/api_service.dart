@@ -1,12 +1,17 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:helixtrace/core/storage/storage_service.dart';
 
 class ApiService {
   late final Dio _dio;
   final String baseUrl;
+  final StorageService _storageService;
 
-  ApiService({String? customBaseUrl})
-      : baseUrl = customBaseUrl ?? dotenv.env['BASE_URL'] ?? 'https://trace-api.meshcore.bg/' {
+  ApiService({
+    required StorageService storageService,
+    String? customBaseUrl,
+  })  : _storageService = storageService,
+        baseUrl = customBaseUrl ?? dotenv.env['BASE_URL'] ?? 'https://trace-api.meshcore.bg/' {
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       contentType: 'application/json',
@@ -17,6 +22,19 @@ class ApiService {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // Auto-inject Bearer token for all protected endpoints
+        final path = options.path;
+        final isPublicEndpoint = path == '/api/login' ||
+            path == '/api/register' ||
+            path == '/api/health';
+
+        if (!isPublicEndpoint) {
+          final token = _storageService.getAuthToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+        }
+
         return handler.next(options);
       },
       onError: (error, handler) {
@@ -67,14 +85,9 @@ class ApiService {
     }
   }
 
-  Future<Response> getProfile({required String token}) async {
+  Future<Response> getProfile() async {
     try {
-      final response = await _dio.get(
-        '/api/profile',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      final response = await _dio.get('/api/profile');
       return response;
     } on DioException catch (e) {
       throw ApiException(e.message ?? 'Failed to fetch profile', e.response?.statusCode ?? 500);
@@ -82,7 +95,6 @@ class ApiService {
   }
 
   Future<Response> getTracePath({
-    required String token,
     required String from,
     required String to,
   }) async {
@@ -93,9 +105,6 @@ class ApiService {
           'from': from,
           'to': to,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
       );
       return response;
     } on DioException catch (e) {
@@ -104,7 +113,6 @@ class ApiService {
   }
 
   Future<Response> getPoints({
-    required String token,
     bool includePublic = false,
     bool includeMeshcoreDashboard = false,
   }) async {
@@ -115,9 +123,6 @@ class ApiService {
           'include_public': includePublic,
           'include_meshcore_dashboard': includeMeshcoreDashboard,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
       );
       return response;
     } on DioException catch (e) {
@@ -126,7 +131,6 @@ class ApiService {
   }
 
   Future<Response> createPoint({
-    required String token,
     required double lat,
     required double lon,
     required int categoryId,
@@ -144,27 +148,16 @@ class ApiService {
         data['label'] = label;
       }
 
-      final response = await _dio.post(
-        '/api/point',
-        data: data,
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      final response = await _dio.post('/api/point', data: data);
       return response;
     } on DioException catch (e) {
       throw ApiException(e.message ?? 'Failed to create point', e.response?.statusCode ?? 500);
     }
   }
 
-  Future<Response> getPoint({required String token, required String id}) async {
+  Future<Response> getPoint({required String id}) async {
     try {
-      final response = await _dio.get(
-        '/api/point/$id',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      final response = await _dio.get('/api/point/$id');
       return response;
     } on DioException catch (e) {
       throw ApiException(e.message ?? 'Failed to fetch point', e.response?.statusCode ?? 500);
@@ -172,32 +165,20 @@ class ApiService {
   }
 
   Future<Response> updatePoint({
-    required String token,
     required String id,
     required Map<String, dynamic> data,
   }) async {
     try {
-      final response = await _dio.put(
-        '/api/point/$id',
-        data: data,
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      final response = await _dio.put('/api/point/$id', data: data);
       return response;
     } on DioException catch (e) {
       throw ApiException(e.message ?? 'Failed to update point', e.response?.statusCode ?? 500);
     }
   }
 
-  Future<Response> deletePoint({required String token, required String id}) async {
+  Future<Response> deletePoint({required String id}) async {
     try {
-      final response = await _dio.delete(
-        '/api/point/$id',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      final response = await _dio.delete('/api/point/$id');
       return response;
     } on DioException catch (e) {
       throw ApiException(e.message ?? 'Failed to delete point', e.response?.statusCode ?? 500);
@@ -205,7 +186,6 @@ class ApiService {
   }
 
   Future<Response> getPointInfo({
-    required String token,
     required double lat,
     required double lon,
   }) async {
@@ -216,9 +196,6 @@ class ApiService {
           'lat': lat,
           'lon': lon,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
       );
       return response;
     } on DioException catch (e) {
@@ -226,14 +203,9 @@ class ApiService {
     }
   }
 
-  Future<Response> getPointCategories({required String token}) async {
+  Future<Response> getPointCategories() async {
     try {
-      final response = await _dio.get(
-        '/api/point-categories',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      final response = await _dio.get('/api/point-categories');
       return response;
     } on DioException catch (e) {
       throw ApiException(e.message ?? 'Failed to fetch categories', e.response?.statusCode ?? 500);

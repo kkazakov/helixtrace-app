@@ -27,18 +27,24 @@ class SleekButton extends StatelessWidget {
         height: 20,
         width: 20,
         child: Shimmer.fromColors(
-          baseColor: colorScheme.primary.withValues(alpha: 0.3),
-          highlightColor: colorScheme.primary,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          baseColor: colorScheme.onPrimary.withValues(alpha: 0.4),
+          highlightColor: colorScheme.onPrimary,
+          child: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: colorScheme.onPrimary,
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
         ),
       );
     } else {
       buttonContent = Text(
         text,
-        style: theme.textTheme.labelLarge,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: isOutlined ? colorScheme.primary : colorScheme.onPrimary,
+        ),
       );
     }
 
@@ -48,14 +54,15 @@ class SleekButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: colorScheme.primary,
           side: BorderSide(
-            color: colorScheme.primary.withValues(alpha: 0.5),
+            color: onPressed != null
+                ? colorScheme.primary.withValues(alpha: 0.5)
+                : colorScheme.primary.withValues(alpha: 0.2),
             width: 1.5,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          textStyle: theme.textTheme.labelLarge,
+          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 24),
         ),
         child: buttonContent,
       );
@@ -67,11 +74,11 @@ class SleekButton extends StatelessWidget {
         backgroundColor: onPressed != null || !isLoading
             ? colorScheme.primary
             : colorScheme.primary.withValues(alpha: 0.5),
+        foregroundColor: colorScheme.onPrimary,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        textStyle: theme.textTheme.labelLarge,
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 24),
       ),
       child: buttonContent,
     );
