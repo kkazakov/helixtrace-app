@@ -1,0 +1,48 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - run: flutter pub get
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/helixtrace-release.keystore
+
+      - name: Build release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: flutter build apk --release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: HelixTrace ${{ github.ref_name }}
+          body: |
+            ## HelixTrace ${{ github.ref_name }}
+
+            ### Installation
+            Download the APK below and install on your Android device.
+            You may need to enable "Install from unknown sources" in your device settings.
+          files: build/app/outputs/flutter-apk/app-release.apk
