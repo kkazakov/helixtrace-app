@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HelixTrace needs your location to center the map on your current position.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>HelixTrace needs your location to center the map on your current position.</string>
 </dict>
 </plist>

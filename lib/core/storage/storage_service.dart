@@ -46,4 +46,10 @@ class StorageService {
   Future<void> setThemeMode(ThemeMode mode) async {
     await _prefs.setInt('theme_mode', mode.index);
   }
+
+  String? getMapLayer() => _prefs.getString('map_layer');
+
+  Future<void> setMapLayer(String layer) async {
+    await _prefs.setString('map_layer', layer);
+  }
 }
