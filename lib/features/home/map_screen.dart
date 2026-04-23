@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,25 @@ import 'package:helixtrace/features/auth/providers/auth_provider.dart' show Auth
 import 'package:helixtrace/features/auth/providers/providers.dart';
 import 'package:helixtrace/features/home/providers/points_provider.dart';
 import 'package:latlong2/latlong.dart';
+
+const _categoryColors = <int, _ColorPair>{
+  1: _ColorPair(public: '#1976d2', private: '#7b1fa2'),
+  2: _ColorPair(public: '#2e7d32', private: '#d32f2f'),
+  3: _ColorPair(public: '#f9a825', private: '#ef6c00'),
+};
+
+class _ColorPair {
+  final String public;
+  final String private;
+  const _ColorPair({required this.public, required this.private});
+}
+
+Color _markerColor(PointModel point) {
+  final pair = _categoryColors[point.categoryId];
+  if (pair == null) return const Color(0xFFF9A825);
+  final hex = point.public ? pair.public : pair.private;
+  return Color(int.parse(hex.replaceFirst('#', 'FF'), radix: 16));
+}
 
 enum MapLayer {
   osm('osm', 'OpenStreetMap', Icons.map_outlined),
@@ -230,28 +251,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     return MarkerLayer(
       markers: points.map((point) {
+        final color = _markerColor(point);
         return Marker(
           point: LatLng(point.lat, point.lon),
-          width: 32,
-          height: 32,
+          width: 25,
+          height: 41,
           child: GestureDetector(
             onTap: () => _showPointPopup(point, colorScheme),
-            child: Container(
-              decoration: BoxDecoration(
-                color: colorScheme.primary,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: colorScheme.surface,
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
+            child: CustomPaint(
+              painter: _MarkerPinPainter(color: color),
+              size: const Size(25, 41),
             ),
           ),
         );
@@ -614,4 +623,35 @@ class _MapScreenState extends ConsumerState<MapScreen>
       ),
     );
   }
+}
+
+class _MarkerPinPainter extends CustomPainter {
+  final Color color;
+  const _MarkerPinPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color..style = PaintingStyle.fill;
+    final whitePaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.15)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+
+    final cx = size.width / 2;
+    final radius = size.width / 2;
+    final pinBottom = size.height;
+
+    final path = ui.Path();
+    path.addOval(Rect.fromCircle(center: Offset(cx, radius), radius: radius));
+    path.lineTo(cx, pinBottom);
+    path.close();
+
+    canvas.drawPath(path, shadowPaint);
+    canvas.drawPath(path, paint);
+    canvas.drawCircle(Offset(cx, radius), radius * 0.4, whitePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MarkerPinPainter oldDelegate) =>
+      color != oldDelegate.color;
 }
