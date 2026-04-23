@@ -2,7 +2,7 @@ name: helixtrace
 description: "HelixTrace - Network mapping and tracing application."
 publish_to: 'none'
 
-version: 0.0.1+1
+version: 0.0.2-alpha+2
 
 environment:
   sdk: ^3.11.5
