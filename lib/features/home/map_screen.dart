@@ -7,10 +7,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:helixtrace/core/constants/app_constants.dart';
 import 'package:helixtrace/core/storage/storage_service.dart';
+import 'package:helixtrace/data/models/los_model.dart';
 import 'package:helixtrace/data/models/point_model.dart';
 import 'package:helixtrace/features/auth/providers/auth_provider.dart' show AuthState;
 import 'package:helixtrace/features/auth/providers/providers.dart';
 import 'package:helixtrace/features/home/providers/points_provider.dart';
+import 'package:helixtrace/features/home/widgets/terrain_graph_painter.dart';
 import 'package:latlong2/latlong.dart';
 
 const _categoryColors = <int, _ColorPair>{
@@ -23,6 +25,8 @@ const _losTempMarkerColor = Color(0xFF000000);
 const _losSelectedMarkerColor = Color(0xFF000000);
 const _losLineColor = Color(0xFF9E9E9E);
 const _losLineWidth = 3.0;
+const _losClearColor = Color(0xFF2E7D32);
+const _losBlockedColor = Color(0xFFD32F2F);
 
 class _LosPoint {
   final String name;
@@ -89,6 +93,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   bool _losMode = false;
   List<_LosPoint> _losPoints = [];
   int? _draggingIndex;
+  List<TraceResult> _traceResults = [];
+  bool _isLoadingTrace = false;
 
   late final MapController _mapController;
   final _mapKey = GlobalKey();
@@ -142,11 +148,77 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _losMode = !_losMode;
       if (!_losMode) {
         _losPoints = [];
+        _traceResults = [];
+        _isLoadingTrace = false;
       }
     });
     if (_losMode) {
       _showToast('Select 2 or 3 markers or tap on the map');
     }
+  }
+
+  Future<void> _fetchTraceResults() async {
+    if (_losPoints.length < 2) {
+      setState(() {
+        _traceResults = [];
+        _isLoadingTrace = false;
+      });
+      return;
+    }
+
+    setState(() => _isLoadingTrace = true);
+
+    final apiService = ref.read(apiServiceProvider);
+    final results = <TraceResult>[];
+
+    final pairs = <(int, int)>[];
+    if (_losPoints.length == 2) {
+      pairs.add((0, 1));
+    } else if (_losPoints.length == 3) {
+      pairs.add((0, 1));
+      pairs.add((1, 2));
+      pairs.add((0, 2));
+    }
+
+    for (final (i, j) in pairs) {
+      final from = _losPoints[i];
+      final to = _losPoints[j];
+      final fromElev = from.elevation ?? 0.0;
+      final toElev = to.elevation ?? 0.0;
+
+      try {
+        final response = await apiService.getTracePath(
+          from: '${from.position.latitude},${from.position.longitude}',
+          to: '${to.position.latitude},${to.position.longitude}',
+        );
+        final body = response.data as Map<String, dynamic>;
+        final traceData = TraceData.fromJson(body);
+        final status = computeLOSStatus(traceData, fromElev, toElev);
+        results.add(TraceResult(
+          traceData: traceData,
+          fromElevation: fromElev,
+          toElevation: toElev,
+          fromLabel: from.name,
+          toLabel: to.name,
+          losStatus: status,
+        ));
+      } catch (_) {
+        results.add(TraceResult(
+          traceData: TraceData(points: [], count: 0, distanceBetweenPoints: 0),
+          fromElevation: fromElev,
+          toElevation: toElev,
+          fromLabel: from.name,
+          toLabel: to.name,
+          losStatus: LOSStatus.unknown,
+        ));
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _traceResults = results;
+      _isLoadingTrace = false;
+    });
   }
 
   void _showToast(String message) {
@@ -241,8 +313,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
         }
       });
     } catch (_) {
-      // elevation stays null
+      // elevation stays null for map tap
     }
+
+    _fetchTraceResults();
   }
 
   void _selectExistingMarker(PointModel point) {
@@ -268,6 +342,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
         color: _markerColor(point),
       ));
     });
+
+    _fetchTraceResults();
   }
 
   int _nextTempPointNumber() {
@@ -288,7 +364,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _deselectLosPointAt(int index) {
     setState(() {
       _losPoints.removeAt(index);
+      _traceResults = [];
     });
+    _fetchTraceResults();
   }
 
   Future<void> _requestLocation() async {
@@ -471,34 +549,62 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
-  Widget _buildLosLinesLayer() {
+Widget _buildLosLinesLayer() {
     if (_losPoints.length < 2) return const SizedBox.shrink();
 
     final lines = <Polyline>[];
-
+    final pairs = <(int, int)>[];
     if (_losPoints.length == 2) {
-      lines.add(Polyline(
-        points: [_losPoints[0].position, _losPoints[1].position],
-        color: _losLineColor,
-        strokeWidth: _losLineWidth,
-        strokeJoin: StrokeJoin.round,
-      ));
+      pairs.add((0, 1));
     } else if (_losPoints.length == 3) {
-      lines.add(Polyline(
-        points: [_losPoints[0].position, _losPoints[1].position],
-        color: _losLineColor,
-        strokeWidth: _losLineWidth,
-      ));
-      lines.add(Polyline(
-        points: [_losPoints[1].position, _losPoints[2].position],
-        color: _losLineColor,
-        strokeWidth: _losLineWidth,
-      ));
-      lines.add(Polyline(
-        points: [_losPoints[2].position, _losPoints[0].position],
-        color: _losLineColor,
-        strokeWidth: _losLineWidth,
-      ));
+      pairs.add((0, 1));
+      pairs.add((1, 2));
+      pairs.add((0, 2));
+    }
+
+    if (_traceResults.isEmpty) {
+      for (final (i, j) in pairs) {
+        lines.add(Polyline(
+          points: [_losPoints[i].position, _losPoints[j].position],
+          color: _losLineColor,
+          strokeWidth: _losLineWidth,
+          strokeJoin: StrokeJoin.round,
+        ));
+      }
+    } else {
+      final clearCount = _traceResults.where((r) => r.losStatus == LOSStatus.clear).length;
+      for (int idx = 0; idx < pairs.length && idx < _traceResults.length; idx++) {
+        final (i, j) = pairs[idx];
+        final result = _traceResults[idx];
+        final status = result.losStatus;
+
+        Color color;
+        bool dashed = false;
+
+        if (status == LOSStatus.clear) {
+          color = _losClearColor;
+        } else if (status == LOSStatus.blocked) {
+          color = _losBlockedColor;
+        } else {
+          color = _losLineColor;
+        }
+
+        if (_losPoints.length == 2) {
+          if (status == LOSStatus.blocked) dashed = true;
+        } else if (_losPoints.length == 3) {
+          if (clearCount < 2) dashed = true;
+        }
+
+        lines.add(Polyline(
+          points: [_losPoints[i].position, _losPoints[j].position],
+          color: color,
+          strokeWidth: _losLineWidth,
+          strokeJoin: StrokeJoin.round,
+          pattern: dashed
+              ? StrokePattern.dashed(segments: [8, 6])
+              : const StrokePattern.solid(),
+        ));
+      }
     }
 
     return PolylineLayer(polylines: lines);
@@ -597,8 +703,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
         );
       });
     } catch (_) {
-      // elevation stays null
+      // elevation stays null after drag
     }
+
+    _fetchTraceResults();
   }
 
   void _showPointPopup(PointModel point, ColorScheme colorScheme) {
@@ -992,6 +1100,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Widget _buildLosBottomSheet() {
+    final theme = Theme.of(context);
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (_) => false,
       child: DraggableScrollableSheet(
@@ -1003,7 +1112,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         builder: (context, scrollController) {
           return Container(
             decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
+              color: theme.scaffoldBackgroundColor,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.15),
@@ -1023,10 +1132,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.3),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -1036,7 +1142,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           alignment: Alignment.centerLeft,
                           child: Text(
                             'Line of Sight',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
@@ -1067,10 +1173,50 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     childCount: _losPoints.length,
                   ),
                 ),
+                if (_isLoadingTrace)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                if (!_isLoadingTrace && _traceResults.isNotEmpty)
+                  ..._traceResults.map((result) => SliverToBoxAdapter(
+                        child: _buildGraphCard(result),
+                      )),
               ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildGraphCard(TraceResult result) {
+    final graphData = computeGraphData(result.traceData, result.fromElevation, result.toElevation);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${result.fromLabel} → ${result.toLabel}',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            height: 160,
+            child: CustomPaint(
+              painter: TerrainGraphPainter(
+                data: graphData,
+                fromLabel: result.fromLabel,
+                toLabel: result.toLabel,
+                losStatus: result.losStatus,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
