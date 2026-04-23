@@ -1,4 +1,4 @@
-import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -18,6 +18,26 @@ const _categoryColors = <int, _ColorPair>{
   2: _ColorPair(public: '#2e7d32', private: '#d32f2f'),
   3: _ColorPair(public: '#f9a825', private: '#ef6c00'),
 };
+
+const _losTempMarkerColor = Color(0xFF000000);
+const _losSelectedMarkerColor = Color(0xFF000000);
+const _losLineColor = Color(0xFF9E9E9E);
+const _losLineWidth = 3.0;
+
+class _LosPoint {
+  final String name;
+  final LatLng position;
+  final double? elevation;
+  final bool isTemporary;
+  final Color color;
+  const _LosPoint({
+    required this.name,
+    required this.position,
+    required this.elevation,
+    required this.isTemporary,
+    required this.color,
+  });
+}
 
 class _ColorPair {
   final String public;
@@ -53,18 +73,25 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _slideAnimation;
 
   static const _menuWidth = 280.0;
   static const _sofiaCenter = LatLng(42.6977, 23.3219);
   static const _defaultZoom = 13.0;
+  static const _sheetMinHeight = 0.25;
+  static const _sheetMaxHeight = 0.85;
+  static const _maxLosPoints = 3;
 
   MapLayer _selectedLayer = MapLayer.osm;
   bool _isMenuOpen = false;
+  bool _losMode = false;
+  List<_LosPoint> _losPoints = [];
+  int? _draggingIndex;
 
   late final MapController _mapController;
+  final _mapKey = GlobalKey();
 
   @override
   void initState() {
@@ -108,6 +135,160 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   Future<void> _fetchPoints() async {
     await ref.read(pointsProvider.notifier).fetchPoints();
+  }
+
+  void _toggleLosMode() {
+    setState(() {
+      _losMode = !_losMode;
+      if (!_losMode) {
+        _losPoints = [];
+      }
+    });
+    if (_losMode) {
+      _showToast('Select 2 or 3 markers or tap on the map');
+    }
+  }
+
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Future<void> _onMapTapped(
+    dynamic tapPosition,
+    LatLng position,
+  ) async {
+    if (!_losMode) return;
+    if (_losPoints.length >= _maxLosPoints) return;
+
+    final existingIndex = _losPoints.indexWhere(
+      (p) =>
+          (p.position.latitude - position.latitude).abs() < 0.0001 &&
+          (p.position.longitude - position.longitude).abs() < 0.0001,
+    );
+
+    if (existingIndex >= 0) {
+      _deselectLosPointAt(existingIndex);
+      return;
+    }
+
+    final allPoints = ref.read(pointsProvider).points;
+    final existingMarker = allPoints.firstWhere(
+      (p) => (p.lat - position.latitude).abs() < 0.0001 &&
+          (p.lon - position.longitude).abs() < 0.0001,
+      orElse: () => PointModel(
+        id: '',
+        lat: 0,
+        lon: 0,
+        elevation: 0,
+        public: false,
+        categoryId: 0,
+      ),
+    );
+
+    if (existingMarker.id.isNotEmpty) {
+      _selectExistingMarker(existingMarker);
+      return;
+    }
+
+    final nextNum = _nextTempPointNumber();
+    final name = 'Point $nextNum';
+
+    setState(() {
+      _losPoints.add(_LosPoint(
+        name: name,
+        position: position,
+        elevation: null,
+        isTemporary: true,
+        color: _losTempMarkerColor,
+      ));
+    });
+
+    final apiService = ref.read(apiServiceProvider);
+    try {
+      final response = await apiService.getPointInfo(
+        lat: position.latitude,
+        lon: position.longitude,
+      );
+      final body = response.data;
+      double? elevation;
+      if (body is Map<String, dynamic>) {
+        final dataBlock = body['data'];
+        if (dataBlock is Map<String, dynamic>) {
+          elevation = (dataBlock['elevation'] as num?)?.toDouble();
+        } else {
+          elevation = (body['elevation'] as num?)?.toDouble();
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        final idx = _losPoints.indexWhere(
+          (p) => p.position.latitude == position.latitude &&
+              p.position.longitude == position.longitude,
+        );
+        if (idx >= 0) {
+          _losPoints[idx] = _LosPoint(
+            name: name,
+            position: position,
+            elevation: elevation,
+            isTemporary: true,
+            color: _losTempMarkerColor,
+          );
+        }
+      });
+    } catch (_) {
+      // elevation stays null
+    }
+  }
+
+  void _selectExistingMarker(PointModel point) {
+    final existingIndex = _losPoints.indexWhere(
+      (p) =>
+          (p.position.latitude - point.lat).abs() < 0.0001 &&
+          (p.position.longitude - point.lon).abs() < 0.0001,
+    );
+
+    if (existingIndex >= 0) {
+      _deselectLosPointAt(existingIndex);
+      return;
+    }
+
+    if (_losPoints.length >= _maxLosPoints) return;
+
+    setState(() {
+      _losPoints.add(_LosPoint(
+        name: point.label ?? 'Unnamed',
+        position: LatLng(point.lat, point.lon),
+        elevation: point.elevation,
+        isTemporary: false,
+        color: _markerColor(point),
+      ));
+    });
+  }
+
+  int _nextTempPointNumber() {
+    final usedNumbers = _losPoints
+        .where((p) => p.isTemporary)
+        .map((p) {
+          final match = RegExp(r'Point (\d+)').firstMatch(p.name);
+          return match != null ? int.parse(match.group(1)!) : 0;
+        })
+        .toSet();
+    int n = 1;
+    while (usedNumbers.contains(n)) {
+      n++;
+    }
+    return n;
+  }
+
+  void _deselectLosPointAt(int index) {
+    setState(() {
+      _losPoints.removeAt(index);
+    });
   }
 
   Future<void> _requestLocation() async {
@@ -198,10 +379,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
   }
 
-  @override
+ @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final authState = ref.watch(authProvider);
     final topPadding = MediaQuery.of(context).padding.top;
 
@@ -209,7 +390,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       body: Stack(
         children: [
           FlutterMap(
-            key: ValueKey(_selectedLayer.key),
+            key: _mapKey,
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _sofiaCenter,
@@ -217,6 +398,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
+              onMapReady: () {},
+              onTap: _onMapTapped,
             ),
             children: [
               TileLayer(
@@ -227,12 +410,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 source: Text(_selectedLayer.label),
               ),
               _buildMarkersLayer(),
+              _buildLosLinesLayer(),
+              _buildLosTempMarkersLayer(),
             ],
           ),
           _buildHamburgerButton(colorScheme, topPadding),
           _buildLayerButton(colorScheme, topPadding),
+          _buildLosButton(colorScheme, topPadding),
           if (_isMenuOpen) _buildScrimOverlay(),
           _buildSlideMenu(theme, colorScheme, authState, topPadding),
+          if (_losMode && _losPoints.isNotEmpty) _buildLosBottomSheet(),
         ],
       ),
     );
@@ -251,21 +438,167 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     return MarkerLayer(
       markers: points.map((point) {
-        final color = _markerColor(point);
+        Color color;
+        if (_losMode) {
+          final isSelected = _losPoints.any(
+            (p) => p.position.latitude == point.lat &&
+                p.position.longitude == point.lon,
+          );
+          color = isSelected ? _losSelectedMarkerColor : _markerColor(point);
+        } else {
+          color = _markerColor(point);
+        }
+
         return Marker(
           point: LatLng(point.lat, point.lon),
-          width: 25,
-          height: 41,
+          width: 28,
+          height: 28,
           child: GestureDetector(
-            onTap: () => _showPointPopup(point, colorScheme),
+            onTap: () {
+              if (_losMode) {
+                _selectExistingMarker(point);
+              } else {
+                _showPointPopup(point, colorScheme);
+              }
+            },
             child: CustomPaint(
-              painter: _MarkerPinPainter(color: color),
-              size: const Size(25, 41),
+              painter: _MarkerPainter(color: color),
+              size: const Size(28, 28),
             ),
           ),
         );
       }).toList(),
     );
+  }
+
+  Widget _buildLosLinesLayer() {
+    if (_losPoints.length < 2) return const SizedBox.shrink();
+
+    final lines = <Polyline>[];
+
+    if (_losPoints.length == 2) {
+      lines.add(Polyline(
+        points: [_losPoints[0].position, _losPoints[1].position],
+        color: _losLineColor,
+        strokeWidth: _losLineWidth,
+        strokeJoin: StrokeJoin.round,
+      ));
+    } else if (_losPoints.length == 3) {
+      lines.add(Polyline(
+        points: [_losPoints[0].position, _losPoints[1].position],
+        color: _losLineColor,
+        strokeWidth: _losLineWidth,
+      ));
+      lines.add(Polyline(
+        points: [_losPoints[1].position, _losPoints[2].position],
+        color: _losLineColor,
+        strokeWidth: _losLineWidth,
+      ));
+      lines.add(Polyline(
+        points: [_losPoints[2].position, _losPoints[0].position],
+        color: _losLineColor,
+        strokeWidth: _losLineWidth,
+      ));
+    }
+
+    return PolylineLayer(polylines: lines);
+  }
+
+  Widget _buildLosTempMarkersLayer() {
+    if (_losPoints.isEmpty) return const SizedBox.shrink();
+
+    final tempPoints = _losPoints
+        .asMap()
+        .entries
+        .where((e) => e.value.isTemporary)
+        .toList();
+    if (tempPoints.isEmpty) return const SizedBox.shrink();
+
+    return MarkerLayer(
+      markers: tempPoints.map((entry) {
+        final index = entry.key;
+        final losPoint = entry.value;
+        final isDragging = _draggingIndex == index;
+        return Marker(
+          point: losPoint.position,
+          width: isDragging ? 36 : 28,
+          height: isDragging ? 36 : 28,
+          child: GestureDetector(
+            onTap: () => _deselectLosPointAt(index),
+            onLongPressStart: (_) {
+              setState(() => _draggingIndex = index);
+            },
+            onLongPressMoveUpdate: (details) {
+              _onMarkerDrag(index, details);
+            },
+            onLongPressEnd: (_) {
+              _onMarkerDragEnd(index);
+            },
+            child: CustomPaint(
+              painter: _MarkerPainter(color: _losTempMarkerColor),
+              size: Size(isDragging ? 36 : 28, isDragging ? 36 : 28),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _onMarkerDrag(int index, LongPressMoveUpdateDetails details) {
+    final mapContext = _mapKey.currentContext;
+    if (mapContext == null) return;
+    final box = mapContext.findRenderObject() as RenderBox;
+    final local = box.globalToLocal(details.globalPosition);
+    final point = math.Point<double>(local.dx, local.dy);
+
+    try {
+      final latLng = _mapController.camera.pointToLatLng(point);
+      setState(() {
+        _losPoints[index] = _LosPoint(
+          name: _losPoints[index].name,
+          position: latLng,
+          elevation: _losPoints[index].elevation,
+          isTemporary: true,
+          color: _losTempMarkerColor,
+        );
+      });
+    } catch (_) {
+      // ignore out-of-bounds
+    }
+  }
+
+  Future<void> _onMarkerDragEnd(int index) async {
+    setState(() => _draggingIndex = null);
+    final point = _losPoints[index];
+    final apiService = ref.read(apiServiceProvider);
+    try {
+      final response = await apiService.getPointInfo(
+        lat: point.position.latitude,
+        lon: point.position.longitude,
+      );
+      final body = response.data;
+      double? elevation;
+      if (body is Map<String, dynamic>) {
+        final dataBlock = body['data'];
+        if (dataBlock is Map<String, dynamic>) {
+          elevation = (dataBlock['elevation'] as num?)?.toDouble();
+        } else {
+          elevation = (body['elevation'] as num?)?.toDouble();
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _losPoints[index] = _LosPoint(
+          name: point.name,
+          position: point.position,
+          elevation: elevation,
+          isTemporary: true,
+          color: _losTempMarkerColor,
+        );
+      });
+    } catch (_) {
+      // elevation stays null
+    }
   }
 
   void _showPointPopup(PointModel point, ColorScheme colorScheme) {
@@ -416,6 +749,40 @@ class _MapScreenState extends ConsumerState<MapScreen>
           setState(() => _selectedLayer = layer);
           StorageService().setMapLayer(layer.key);
         },
+      ),
+    );
+  }
+
+  Widget _buildLosButton(ColorScheme colorScheme, double topPadding) {
+    return Positioned(
+      top: topPadding + 16,
+      right: 76,
+      child: GestureDetector(
+        onTap: _toggleLosMode,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _losMode
+                ? colorScheme.primary
+                : colorScheme.surfaceContainer,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.visibility_outlined,
+            color: _losMode
+                ? colorScheme.onPrimary
+                : colorScheme.onSurface,
+            size: 22,
+          ),
+        ),
       ),
     );
   }
@@ -623,35 +990,121 @@ class _MapScreenState extends ConsumerState<MapScreen>
       ),
     );
   }
+
+  Widget _buildLosBottomSheet() {
+    return NotificationListener<DraggableScrollableNotification>(
+      onNotification: (_) => false,
+      child: DraggableScrollableSheet(
+        initialChildSize: _sheetMinHeight,
+        minChildSize: _sheetMinHeight,
+        maxChildSize: _sheetMaxHeight,
+        snap: true,
+        snapSizes: const [_sheetMinHeight, _sheetMaxHeight],
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: CustomScrollView(
+              controller: scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Line of Sight',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                    ],
+                  ),
+                ),
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final point = _losPoints[index];
+                      return ListTile(
+                        title: Text(point.name),
+                        subtitle: Text(
+                          point.elevation != null
+                              ? '${point.elevation!.toStringAsFixed(1)} m'
+                              : 'Fetching elevation...',
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => _deselectLosPointAt(index),
+                        ),
+                      );
+                    },
+                    childCount: _losPoints.length,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
-class _MarkerPinPainter extends CustomPainter {
+class _MarkerPainter extends CustomPainter {
   final Color color;
-  const _MarkerPinPainter({required this.color});
+  const _MarkerPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.fill;
-    final whitePaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.15)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-
     final cx = size.width / 2;
+    final cy = size.height / 2;
     final radius = size.width / 2;
-    final pinBottom = size.height;
 
-    final path = ui.Path();
-    path.addOval(Rect.fromCircle(center: Offset(cx, radius), radius: radius));
-    path.lineTo(cx, pinBottom);
-    path.close();
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.2)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(Offset(cx, cy), radius, shadowPaint);
 
-    canvas.drawPath(path, shadowPaint);
-    canvas.drawPath(path, paint);
-    canvas.drawCircle(Offset(cx, radius), radius * 0.4, whitePaint);
+    final fillPaint = Paint()..color = color..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(cx, cy), radius, fillPaint);
+
+    final strokePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+    canvas.drawCircle(Offset(cx, cy), radius, strokePaint);
+
+    final innerPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(cx, cy), radius * 0.35, innerPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _MarkerPinPainter oldDelegate) =>
+  bool shouldRepaint(covariant _MarkerPainter oldDelegate) =>
       color != oldDelegate.color;
 }
