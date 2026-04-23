@@ -1,16 +1,16 @@
 # App Entry & Routing
 
-**Type:** Explanation — this doc describes the application entry point, initialization sequence, and navigation configuration.
+**Type:** Explanation — this doc describes the application entry point, initialization sequence, navigation configuration, and the authentication shell with session restoration.
 
 ## Responsibility
 
-The entry point and routing layer bootstraps the Flutter application, initializes shared services, configures the navigation system via `GoRouter`, and manages the authenticated vs. unauthenticated screen transition. If this component fails, the entire app cannot start or navigate.
+The entry point and routing layer bootstraps the Flutter application, initializes shared services, configures the navigation system via `GoRouter`, and manages the authenticated vs. unauthenticated screen transition including session restoration on app startup. If this component fails, the entire app cannot start or navigate.
 
 ## Public Interface
 
 - **`main()`** (`lib/main.dart:13`) — Application entry point. Called by the Flutter framework.
 - **`HelixTraceApp`** (`lib/main.dart:24`) — Root `ConsumerWidget` that watches theme and router providers.
-- **`AuthenticationShell`** (`lib/main.dart:67`) — Wrapper widget that conditionally shows the login screen or redirects to the map based on auth state.
+- **`AuthenticationShell`** (`lib/main.dart:67`) — `ConsumerStatefulWidget` that manages session restoration, shows a loading indicator during initialization, and conditionally shows the login screen or map based on auth state.
 - **`routerProvider`** (`lib/main.dart:43`) — Riverpod provider that creates and configures the `GoRouter` instance.
 
 ## Internal Structure
@@ -34,17 +34,25 @@ The `routerProvider` provider creates a `GoRouter` with the following route stru
 | Register | `/register` (child of login) | `RegisterScreen` |
 | Home | `/home` | `MapScreen` |
 
-The router starts at `AppConstants.routeLogin` (`'/'`). The `AuthenticationShell` widget watches the auth state and acts as a guard: if the user is authenticated (`authState.user != null`), it renders `MapScreen`; otherwise, it renders `LoginScreen`.
+The router starts at `AppConstants.routeLogin` (`'/'`). The `AuthenticationShell` widget watches the auth state and acts as a guard: if the user is initializing, it shows a loading spinner; if authenticated (`authState.user != null`), it renders `MapScreen`; otherwise, it renders `LoginScreen`.
 
 ### Authentication Shell
 
-`AuthenticationShell` (`lib/main.dart:67`) is a `StatelessWidget` that wraps the login route. It uses a `Consumer` widget to watch `authProvider` and redirect authenticated users away from the login flow. This is the only place in the codebase where auth state directly controls UI routing — the home route does not have a guard, so users who navigate directly to `/home` will see the map screen if authenticated.
+`AuthenticationShell` (`lib/main.dart:67`) is a `ConsumerStatefulWidget` that manages two concerns:
+
+1. **Session restoration** — On `initState()`, it schedules `authProvider.notifier.init()` via `Future.microtask()`. This triggers the session restoration flow (validating the stored token against the API).
+2. **Screen selection** — The `build()` method checks auth state:
+   - `authState.isInitializing == true` → Shows a centered `CircularProgressIndicator` on a gradient background
+   - `authState.user != null` → Shows `MapScreen`
+   - Otherwise → Shows `LoginScreen`
+
+The initialization loading state prevents the brief flash of the login screen that would occur while the stored token is being validated.
 
 ## Dependencies
 
 ### Internal Dependencies
 
-- **Auth feature** (`lib/features/auth/`) — The shell reads `authProvider` to determine navigation state.
+- **Auth feature** (`lib/features/auth/`) — The shell reads `authProvider` to determine navigation state and triggers session restoration.
 - **Storage service** (`lib/core/storage/storage_service.dart`) — Initialized in `main()` before the app runs.
 - **Theme provider** (`lib/features/auth/providers/theme_provider.dart`) — Watched by `HelixTraceApp` to set theme mode.
 - **Constants** (`lib/core/constants/app_constants.dart`) — Defines route names used by the router.
@@ -61,12 +69,21 @@ This component does not own data. It references `AuthResponse` (from `lib/data/m
 
 ## Key Logic
 
+### Session restoration on startup
+
+The auth shell's `initState()` schedules a microtask to call `ref.read(authProvider.notifier).init()`. This method validates any stored token against the API. During validation, the shell shows a loading spinner with a gradient background (dark or light depending on system theme). Once validation completes, the shell transitions to either `MapScreen` (valid session) or `LoginScreen` (no session or invalid token).
+
 ### Auth-based screen selection
 
-The authentication shell's conditional rendering is the core routing logic (`lib/main.dart:74-80`):
+The authentication shell's conditional rendering is the core routing logic (`lib/main.dart:85-117`):
 
 ```dart
 final authState = ref.watch(authProvider);
+
+if (authState.isInitializing) {
+  return Scaffold(/* gradient background + CircularProgressIndicator */);
+}
+
 if (authState.user != null) {
   return const MapScreen();
 }
@@ -77,7 +94,7 @@ This means authentication state flows from the Riverpod provider → shell widge
 
 ### Environment-based API configuration
 
-The API base URL comes from `.env` (loaded via `flutter_dotenv`), with a fallback to `AppConfig.defaultBaseUrl` (`'https://trace-api.meshcore.bg/'`) in `ApiService` (`lib/data/services/api_service.dart:19`). This allows the app to target different API environments without code changes.
+The API base URL comes from `.env` (loaded via `flutter_dotenv`), with a fallback to `AppConfig.defaultBaseUrl` (`'https://trace-api.meshcore.bg/'`) in `ApiService` (`lib/data/services/api_service.dart:14`). Users can also set a custom URL at runtime via the login screen's API URL dialog, which persists it in `StorageService`.
 
 ## Configuration
 
@@ -93,9 +110,13 @@ The API base URL comes from `.env` (loaded via `flutter_dotenv`), with a fallbac
 
 The auth check happens in the `AuthenticationShell` widget rather than as a GoRouter redirect. This is simpler for the current two-route auth flow but does not protect the `/home` route directly — a user who knows the URL can navigate there without going through the shell's check. A route-level redirect would be more robust as the app grows.
 
+### Session restoration with loading state
+
+The `isInitializing` state prevents a brief flash of the login screen while the stored token is being validated. Without this, users with valid sessions would see the login screen for a moment before being redirected to the map. The trade-off is an extra loading screen on every app start, but it provides a smoother experience.
+
 ### Router as a provider
 
-The `GoRouter` instance lives in a Riverpod provider (`routerProvider`) rather than being created directly in `main()`. This allows the router to depend on Riverpod-injected services (currently none, but the auth provider dependency in the shell suggests future routes may need provider access). It also makes the router testable.
+The `GoRouter` instance lives in a Riverpod provider (`routerProvider`) rather than being created directly in `main()`. This allows the router to depend on Riverpod-injected services. It also makes the router testable.
 
 ### Nested login/register routes
 
@@ -104,7 +125,7 @@ The register screen is nested under the login route (`/register` as a child of `
 ## Testing
 
 - **Widget test** exists in `test/widget_test.dart` that verifies the app initializes and renders a `Scaffold`. It pumps `HelixTraceApp` inside `ProviderScope` and asserts `find.byType(Scaffold)` finds one widget.
-- No unit tests exist for the router configuration or authentication shell logic.
+- No unit tests exist for the router configuration, authentication shell logic, or session restoration.
 - To run: `flutter test`
 
 ## Related Components

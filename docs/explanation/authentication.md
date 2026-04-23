@@ -1,21 +1,21 @@
 # Authentication
 
-**Type:** Explanation — this doc describes the authentication feature: login and registration screens, auth state management, and the authentication flow.
+**Type:** Explanation — this doc describes the authentication feature: login and registration screens, auth state management, session restoration, and the authentication flow.
 
 ## Responsibility
 
-The authentication feature handles user identity verification through login and registration. It manages the auth state lifecycle (loading, success, error), persists credentials locally, and gates access to the authenticated home screen. If this component fails, users cannot access the application.
+The authentication feature handles user identity verification through login and registration. It manages the auth state lifecycle (initializing, loading, success, error), persists credentials locally, restores sessions on app startup, and gates access to the authenticated home screen. If this component fails, users cannot access the application.
 
 ## Public Interface
 
 ### Screens
 
-- **`LoginScreen`** (`lib/features/auth/login_screen.dart:1`) — `ConsumerStatefulWidget` that renders the login form with email/password fields, API URL configuration, and navigation to registration.
-- **`RegisterScreen`** (`lib/features/auth/register_screen.dart:1`) — `ConsumerStatefulWidget` that renders the registration form with email/password/confirm-password fields and navigation back to login.
+- **`LoginScreen`** (`lib/features/auth/login_screen.dart:11`) — `ConsumerStatefulWidget` that renders the login form with email/password fields, API URL configuration, theme toggle, and navigation to registration.
+- **`RegisterScreen`** (`lib/features/auth/register_screen.dart:11`) — `ConsumerStatefulWidget` that renders the registration form with email/password/confirm-password fields and navigation back to login.
 
 ### State
 
-- **`authProvider`** (`lib/features/auth/providers/providers.dart:28`) — `StateNotifierProvider<AuthNotifier, AuthState>` — the single source of truth for authentication state, consumed by both screens and the authentication shell.
+- **`authProvider`** (`lib/features/auth/providers/providers.dart:34`) — `StateNotifierProvider<AuthNotifier, AuthState>` — the single source of truth for authentication state, consumed by both screens, the authentication shell, and the map screen menu.
 
 ## Internal Structure
 
@@ -23,49 +23,75 @@ The authentication feature handles user identity verification through login and 
 
 `LoginScreen` renders a branded form with:
 
-1. Email field (validated with `Validators.emailValidator`)
-2. Password field (validated with `Validators.passwordValidator`, obscured)
-3. API URL configuration button (opens a dialog validated with `Validators.urlValidator`)
-4. Login button (disabled until an API URL is set via `StorageService`)
-5. Register navigation link
+1. Top-right toolbar: API URL configuration button (opens dialog), theme toggle button
+2. Branded logo (gradient circle with GPS icon)
+3. "HelixTrace" title and "Map the invisible network" subtitle
+4. Email field (validated with `Validators.emailValidator`, disabled until API URL is set)
+5. Password field (validated with `Validators.passwordValidator`, obscured with toggle)
+6. Login button (disabled until API URL is set, shows shimmer animation when loading)
+7. Error message display (styled with error color background)
+8. Registration link (visible only when API URL is configured)
 
 On submit, the screen calls `authProvider.notifier.login(email: email, password: password)` and navigates to `AppConstants.routeHome` (`'/home'`) on success using `context.go()`.
 
 ### Register Screen
 
-`RegisterScreen` mirrors the login screen structure with an additional confirm-password field. It validates that both password fields match before submitting. On submit, it calls `authProvider.notifier.register(email: email, password: password)` and navigates to home on success.
+`RegisterScreen` mirrors the login screen structure with:
+1. Top-right toolbar: API URL configuration button, theme toggle button
+2. Branded logo (gradient circle with person_add icon)
+3. "Create Account" title and "Join HelixTrace today" subtitle
+4. Email field, password field, confirm-password field
+5. Registration button
+6. Error message display
+7. Login link ("Already have an account?")
+
+It validates that both password fields match before submitting. On submit, it calls `authProvider.notifier.register(email: email, password: password)` and navigates to home on success.
 
 ### Auth State Machine
 
-The `AuthNotifier` (`lib/features/auth/providers/auth_provider.dart`) implements a three-state machine:
+The `AuthNotifier` (`lib/features/auth/providers/auth_provider.dart:29`) implements a state machine with five states:
 
 | State | Meaning | Transition |
 |---|---|---|
-| `AuthState.initial()` | Idle, no operation in progress | Default, or after logout |
+| `AuthState.initial()` | Idle, no operation in progress | Default, after logout, or after failed init |
+| `AuthState.initializing()` | Session restoration in progress | On app startup via `init()` |
 | `AuthState.loading()` | Login/register request in flight | On submit |
-| `AuthState.authenticated(user)` | Success — user object available | After successful API call |
+| `AuthState.authenticated(user)` | Success — user object available | After successful API call or restored session |
 | `AuthState.error(message)` | Failure — error message available | After failed API call |
 
-Transitions: `initial → loading → authenticated | error → initial` (on retry or logout).
+Transitions: `initial → initializing → authenticated | initial` (session restoration), `initial → loading → authenticated | error` (login/register), `any → initial` (logout).
+
+### Session Restoration
+
+On app startup, the `AuthenticationShell` calls `authProvider.notifier.init()` via `Future.microtask()` in `initState()`. The `init()` method:
+
+1. Sets state to `AuthState.initializing()`
+2. Calls `AuthRepository.restoreSession()`, which validates the stored token against the API
+3. If valid: reconstructs a minimal `AuthResponse` from stored email and token, sets `AuthState.authenticated()`
+4. If invalid: clears storage, sets `AuthState.initial()`
+
+The `AuthenticationShell` watches `authState.isInitializing` to show a loading spinner during this process.
 
 ### Auth Repository
 
-`AuthRepository` (`lib/features/auth/providers/auth_provider.dart`) combines network calls and local storage:
+`AuthRepository` (`lib/data/repositories/auth_repository.dart:5`) combines network calls and local storage:
 
 | Method | Behavior |
 |---|---|
-| `login(email, password)` | Calls `AuthService.login()`, persists token + email via `StorageService`, returns `AuthResponse` |
-| `register(email, password)` | Calls `AuthService.register()`, persists token + email via `StorageService`, returns `AuthResponse` |
+| `login(email, password)` | Calls `AuthService.login()`, persists token + email via `StorageService`, validates token, returns `AuthResponse` |
+| `register(email, password)` | Calls `AuthService.register()`, persists token + email via `StorageService`, validates token, returns `AuthResponse` |
 | `logout()` | Clears token + email from `StorageService` |
+| `restoreSession()` | Checks stored token + email, validates via `AuthService.validateToken()`, returns `true`/`false`; clears storage on failure |
 | `isAuthenticated` | Returns `true` if a stored token exists |
 | `currentUserEmail` | Returns the stored email, or `null` |
+| `currentToken` | Returns the stored token, or `null` |
 
 ## Dependencies
 
 ### Internal Dependencies
 
 - **Data layer** (`lib/data/`) — `AuthService` for HTTP calls, `AuthResponse` model, `ApiException` for errors.
-- **Storage** (`lib/core/storage/storage_service.dart`) — Persists auth token and email.
+- **Storage** (`lib/core/storage/storage_service.dart`) — Persists auth token, email, and API URL.
 - **Validators** (`lib/core/utils/validators.dart`) — Email, password, and URL validation.
 - **Constants** (`lib/core/constants/app_constants.dart`) — Route names.
 
@@ -79,8 +105,6 @@ Transitions: `initial → loading → authenticated | error → initial` (on ret
 
 ### `AuthResponse` (`lib/data/models/auth_response.dart`)
 
-Represents the response from login/register endpoints:
-
 | Field | Type | Description |
 |---|---|---|
 | `token` | `String` | Bearer token for authenticated requests |
@@ -93,7 +117,7 @@ Parsed from JSON via `fromJson()` factory constructor.
 
 ### Error handling by status code
 
-`ApiService.login()` and `ApiService.register()` (`lib/data/services/api_service.dart:26-67`) catch `DioException` and map specific HTTP status codes to user-friendly `ApiException` messages:
+`ApiService.login()` and `ApiService.register()` (`lib/data/services/api_service.dart:46-86`) catch `DioException` and map specific HTTP status codes to user-friendly `ApiException` messages:
 
 - `403` — "Account is disabled. Contact support."
 - `401` — "Invalid email or password."
@@ -102,11 +126,31 @@ Parsed from JSON via `fromJson()` factory constructor.
 
 ### API URL requirement
 
-Both login and register screens check whether an API URL has been configured (`_hasApiUrl()` in `login_screen.dart:144-147`). The submit button is disabled until the user sets one via the "API URL" dialog. This allows users to configure a custom backend endpoint (e.g., a local development server) before authenticating.
+Both login and register screens check whether an API URL has been configured (`_apiUrlSet` in `login_screen.dart:24`). The submit button and form fields are disabled until the user sets an API URL via the top-right dialog. This allows users to configure a custom backend endpoint before authenticating.
+
+### Session restoration flow
+
+```
+App starts → AuthenticationShell.initState()
+    ↓
+Future.microtask() → authProvider.notifier.init()
+    ↓
+State = AuthState.initializing() → shows loading spinner
+    ↓
+AuthRepository.restoreSession()
+    ↓
+If stored token + email exist:
+    AuthService.validateToken() → GET /api/points
+    ↓
+    Valid → AuthState.authenticated(reconstructed AuthResponse)
+    Invalid → AuthRepository.logout() → AuthState.initial()
+    ↓
+Shell watches state → shows MapScreen (authenticated) or LoginScreen (initial)
+```
 
 ### Token persistence
 
-After successful login or register, the repository saves the auth token to `StorageService` using the key `'auth_token'`. The token is then included as a `Bearer` header in all subsequent authenticated API requests via `ApiService._addAuthHeaders()`.
+After successful login or register, the repository saves the auth token and email to `StorageService`. The token is then injected as a `Bearer` header in all subsequent authenticated API requests via the Dio interceptor in `ApiService`.
 
 ## Configuration
 
@@ -126,18 +170,23 @@ After successful login or register, the repository saves the auth token to `Stor
 
 The auth token is stored in plain text in SharedPreferences. This is acceptable for a mobile app with device-level encryption but is not suitable for sensitive tokens in production. Consider encrypted storage (e.g., `flutter_secure_storage`) if the token sensitivity increases.
 
-### No logout UI yet
+### Post-login token validation
 
-The `AuthNotifier` exposes a `logout()` method and the repository supports logout, but neither screen has a logout button. The user remains authenticated until the token is manually cleared or the app data is wiped.
+Both `login()` and `register()` in `AuthRepository` call `AuthService.validateToken()` after persisting the token. This double-check ensures the returned token is actually accepted by the API before transitioning to the authenticated state. The trade-off is an extra network request on every login/register.
 
-### Placeholder home screen
+### Logout now available
 
-After authentication, users are routed to `MapScreen` which is currently a static placeholder. The actual map/tracing functionality is not yet implemented.
+The map screen side menu provides a logout button that calls `authProvider.notifier.logout()` and navigates to the login route. This was previously missing (noted in earlier docs as a known gap).
+
+### Placeholder force-unwrap of email initial
+
+The menu header in `MapScreen` accesses `(authState.user?.email ?? '')[0].toUpperCase()`, which would throw if `email` is an empty string. This is safe in practice because the backend validates email format.
 
 ## Testing
 
-- **Widget test** in `test/widget_test.dart` verifies the app initializes correctly, which indirectly exercises the auth shell's default state (unauthenticated → login screen).
+- **Widget test** in `test/widget_test.dart` verifies the app initializes correctly, which indirectly exercises the auth shell's default state (initializing → unauthenticated → login screen).
 - No dedicated tests exist for `AuthNotifier`, `AuthRepository`, or the auth screens.
+- The `authRepositoryProvider` and `authProvider` declarations in `auth_provider.dart` that throw `UnimplementedError` are intended for test overrides.
 - To run: `flutter test`
 
 ## Related Components
@@ -145,3 +194,4 @@ After authentication, users are routed to `MapScreen` which is currently a stati
 - [App Entry & Routing](app-entry-routing.md) — The authentication shell that gates access based on auth state.
 - [Data Layer](data-layer.md) — `AuthService` and `ApiService` handle the actual HTTP auth requests.
 - [State Management](state-management.md) — The `authProvider` dependency injection chain.
+- [Map Screen](map-screen.md) — Provides the logout button in the side menu.
