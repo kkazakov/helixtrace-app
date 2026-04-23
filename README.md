@@ -6,8 +6,6 @@ Network mapping and tracing application for mobile.
 
 HelixTrace is a Flutter mobile application that lets users create, manage, and visualize geographic network points and trace paths, with line-of-sight analysis between points on an interactive map. Users authenticate via email/password, then interact with points and visibility analysis on a map display.
 
-See [PURPOSE.md](PURPOSE.md) for the business context and goals.
-
 ## Build, Run, Test
 
 ```bash

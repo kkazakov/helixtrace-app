@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:helixtrace/data/models/point_model.dart';
 import 'package:helixtrace/data/services/api_service.dart';
 import 'package:helixtrace/features/auth/providers/providers.dart';

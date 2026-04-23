@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:helixtrace/data/models/auth_response.dart';
 import 'package:helixtrace/data/repositories/auth_repository.dart';
 

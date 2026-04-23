@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -655,10 +653,10 @@ Widget _buildLosLinesLayer() {
     if (mapContext == null) return;
     final box = mapContext.findRenderObject() as RenderBox;
     final local = box.globalToLocal(details.globalPosition);
-    final point = math.Point<double>(local.dx, local.dy);
+    final offset = Offset(local.dx, local.dy);
 
     try {
-      final latLng = _mapController.camera.pointToLatLng(point);
+      final latLng = _mapController.camera.screenOffsetToLatLng(offset);
       setState(() {
         _losPoints[index] = _LosPoint(
           name: _losPoints[index].name,

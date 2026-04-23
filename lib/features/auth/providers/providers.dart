@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:helixtrace/core/storage/storage_service.dart';
 import 'package:helixtrace/data/repositories/auth_repository.dart';
 import 'package:helixtrace/data/services/api_service.dart';
