@@ -7,18 +7,26 @@ class StorageService {
   StorageService._internal();
 
   late SharedPreferences _prefs;
+  bool _initialized = false;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
+    _initialized = true;
   }
 
-  String? getApiKey() => _prefs.getString('api_url');
+  String? getApiKey() {
+    if (!_initialized) return null;
+    return _prefs.containsKey('api_url') ? _prefs.getString('api_url') : null;
+  }
 
   Future<void> setApiKey(String url) async {
     await _prefs.setString('api_url', url);
   }
 
-  String? getAuthToken() => _prefs.getString('auth_token');
+  String? getAuthToken() {
+    if (!_initialized) return null;
+    return _prefs.containsKey('auth_token') ? _prefs.getString('auth_token') : null;
+  }
 
   Future<void> setAuthToken(String token) async {
     await _prefs.setString('auth_token', token);
@@ -28,7 +36,10 @@ class StorageService {
     await _prefs.remove('auth_token');
   }
 
-  String? getUserEmail() => _prefs.getString('user_email');
+  String? getUserEmail() {
+    if (!_initialized) return null;
+    return _prefs.containsKey('user_email') ? _prefs.getString('user_email') : null;
+  }
 
   Future<void> setUserEmail(String email) async {
     await _prefs.setString('user_email', email);
@@ -39,6 +50,7 @@ class StorageService {
   }
 
   ThemeMode getThemeMode() {
+    if (!_initialized) return ThemeMode.light;
     final index = _prefs.getInt('theme_mode') ?? 0;
     return ThemeMode.values[index];
   }
@@ -47,7 +59,10 @@ class StorageService {
     await _prefs.setInt('theme_mode', mode.index);
   }
 
-  String? getMapLayer() => _prefs.getString('map_layer');
+  String? getMapLayer() {
+    if (!_initialized) return null;
+    return _prefs.getString('map_layer');
+  }
 
   Future<void> setMapLayer(String layer) async {
     await _prefs.setString('map_layer', layer);

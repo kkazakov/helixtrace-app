@@ -77,7 +77,11 @@ class _AuthenticationShellState extends ConsumerState<AuthenticationShell> {
     super.initState();
     // Kick off session restoration from storage on app start.
     Future.microtask(() {
-      ref.read(authProvider.notifier).init();
+      try {
+        ref.read(authProvider.notifier).init();
+      } catch (_) {
+        // Storage may not be initialized in tests or edge cases.
+      }
     });
   }
 
